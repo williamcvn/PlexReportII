@@ -1443,7 +1443,30 @@ namespace PlexReportII.Reports
             // === 開始繪製 ===
 
             // 檢查換頁 (Header)
-            if (rc.Y + headerHeight > drawableBottom)
+            float firstRowHeightEstimate = 14f;
+            if (groups.Count > 0 && groups[0].Count > 0)
+            {
+                PcncDetailItem firstItem = groups[0][0];
+                float minH = _c1pdf.MeasureString("Tg", fontItem, 100).Height + 6;
+                firstRowHeightEstimate = minH;
+                for (int colIdx = 0; colIdx < numOfCol; colIdx++)
+                {
+                    if (style.EnableColumnMerge && Array.Exists(style.MergeColumnIndices, idx => idx == colIdx)) continue;
+                    string cellText = NormalizeText(firstItem.GetValueByIndex(colIdx));
+                    if (!string.IsNullOrEmpty(cellText))
+                    {
+                        float h = _c1pdf.MeasureString(cellText, fontItem, colWidths[colIdx] - style.CellPadding * 2, GetAlignment(colIdx)).Height + 6;
+                        if (h > firstRowHeightEstimate) firstRowHeightEstimate = h;
+                    }
+                }
+            }
+
+            if (rc.Y > rcPage.Top + 10f && rc.Y + headerHeight + firstRowHeightEstimate > drawableBottom)
+            {
+                _c1pdf.NewPage();
+                rc.Y = rcPage.Top + style.PageTopMargin;
+            }
+            else if (rc.Y + headerHeight > drawableBottom)
             {
                 _c1pdf.NewPage();
                 rc.Y = rcPage.Top + style.PageTopMargin;
@@ -1881,6 +1904,29 @@ namespace PlexReportII.Reports
                     CurrentRect.Width,
                     PageRect.Bottom - flagStartY);
                 DrawFlagNote(flagNoteData, supplementalText ?? "", true);
+            }
+
+            // === Look-ahead for first data row (Prevent Orphan Header) ===
+            float firstRowHeightEstimate = 14f;
+            if (data.Count > 0)
+            {
+                var firstRow = data[0];
+                for (int c = 0; c < numOfCol; c++)
+                {
+                    string cellText = c < firstRow.Count ? firstRow[c] : "";
+                    float cellH = Pdf.MeasureString(NormalizeText(cellText), fontItem, colWidths[c] - cellPadding * 2).Height + 4;
+                    if (cellH > firstRowHeightEstimate) firstRowHeightEstimate = cellH;
+                }
+            }
+
+            if (rc.Y > PageRect.Top + 10f && rc.Y + headerHeight + firstRowHeightEstimate > drawableBottom)
+            {
+                // Force page break before drawing header if space is not enough for first row
+                CurrentRect = rc;
+                DrawFlagNoteOnPage();
+                AddNewPage();
+                rc = CurrentRect;
+                drawableBottom = PageRect.Bottom - flagNoteReservedHeight;
             }
 
             // === Draw Header ===
@@ -2350,6 +2396,35 @@ namespace PlexReportII.Reports
 
                 // Header bottom line
                 Pdf.DrawLine(new GcPen(lineColor, lineWidth), pageLeft, CurrentRect.Y, pageRight, CurrentRect.Y);
+            }
+
+            // === Look-ahead for first data row (Prevent Orphan Header) ===
+            float headerHeightEstimate = 0f;
+            for (int c = 0; c < numOfCol && c < headerRow.Count; c++)
+            {
+                float measWidth = colWidths[c] - (c == 1 ? 2 : 4);
+                string headerText = WrapTextCharByChar(NormalizeLineBreaks(headerRow[c] ?? ""), headerFont, measWidth);
+                float h = Pdf.MeasureString(headerText, headerFont, measWidth).Height + 6;
+                if (h > headerHeightEstimate) headerHeightEstimate = h;
+            }
+
+            float firstRowHeightEstimate = 14f;
+            if (data.Count > 1)
+            {
+                var firstRow = data[1];
+                for (int c = 0; c < numOfCol && c < firstRow.Count; c++)
+                {
+                    C1Font font = (c < 3) ? bodyFontLarge : bodyFontSmall;
+                    float measWidth = colWidths[c] - (c <= 1 ? 2 : 4);
+                    string cellText = WrapTextCharByChar(NormalizeLineBreaks(firstRow[c] ?? ""), font, measWidth);
+                    float h = Pdf.MeasureString(cellText, font, measWidth).Height + 6;
+                    if (h > firstRowHeightEstimate) firstRowHeightEstimate = h;
+                }
+            }
+
+            if (CurrentRect.Y > PageRect.Top + 10f && CurrentRect.Y + headerHeightEstimate + firstRowHeightEstimate > PageRect.Bottom)
+            {
+                AddNewPage();
             }
 
             // === Draw initial Header ===
