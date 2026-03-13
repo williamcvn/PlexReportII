@@ -80,6 +80,11 @@ namespace PlexReportII.Reports
         public float CurrentX => CurrentRect.X;
 
         /// <summary>
+        /// Flag Note 預設頂部間距高度 (預設: 2pt)。
+        /// </summary>
+        public float FlagNoteSpacing { get; set; } = 2f;
+
+        /// <summary>
         /// Header 佔用區域。
         /// </summary>
         public RectangleF HeaderAreaRect { get; protected set; }
@@ -1774,7 +1779,7 @@ namespace PlexReportII.Reports
             float fontSize = 8f;
             float cellPadding = 3f;
             float borderWidth = 0.5f;
-            float flagNoteGap = 2f;
+            float flagNoteGap = FlagNoteSpacing;
 
             // Column width ratios (sum = 1.0)
             float[] colRatios = { 0.08f, 0.10f, 0.08f, 0.30f, 0.34f, 0.10f };
