@@ -1,4 +1,4 @@
-﻿// File Version: 1.1.0
+// File Version: 1.1.0
 // Last Modified: 2026-02-04
 // Change Owner: Office of William
 
@@ -454,9 +454,9 @@ namespace PlexReportII.Reports
             string footerText = HeaderFooter.FooterText;
             if (string.IsNullOrEmpty(footerText))
             {
-                // 預設格式: Created by DeXipher™ v{Version} (Exported by {Operator} {Time}) {RUO}
+                // 預設格式: Created by {SoftwareName} v{Version} (Exported by {Operator} {Time}) {RUO}
                 string ruoStr = HeaderFooter.IsResearchUseOnly ? $"       {HeaderFooter.ResearchUseOnlyText}" : "";
-                footerText = $"Created by DeXipher™ v{HeaderFooter.VersionText} (Exported by {HeaderFooter.OperatorName} {HeaderFooter.ExportedTime}){ruoStr}";
+                footerText = $"Created by {HeaderFooter.SoftwareNameText} v{HeaderFooter.VersionText} (Exported by {HeaderFooter.OperatorName} {HeaderFooter.ExportedTime}){ruoStr}";
             }
 
             if (!string.IsNullOrEmpty(footerText))

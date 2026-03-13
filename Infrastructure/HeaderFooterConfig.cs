@@ -71,6 +71,11 @@ namespace PlexReportII.Infrastructure
         public Image? Logo { get; set; }
 
         /// <summary>
+        /// 軟體名稱資訊（預設 "DeXipher™"）。
+        /// </summary>
+        public string SoftwareNameText { get; set; } = "DeXipher™";
+
+        /// <summary>
         /// 軟體版本資訊（預設 "1.0.0.3643"）。
         /// </summary>
         public string VersionText { get; set; } = "1.0.0.3643";
