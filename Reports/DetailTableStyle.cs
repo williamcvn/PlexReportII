@@ -74,7 +74,7 @@ namespace PlexReportII.Reports
         public float PageTopMargin { get; set; } = 20f;
 
         /// <summary>頁面底部預留空間 (pt)</summary>
-        public float PageBottomMargin { get; set; } = 30f;
+        public float PageBottomMargin { get; set; } = Infrastructure.PdfGlobalConfig.DefaultPageBottomMargin;
 
         /// <summary>是否有 Footer Note</summary>
         public bool HasFooterNote { get; set; } = false;

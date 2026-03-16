@@ -25,6 +25,12 @@ namespace PlexReportII.Infrastructure
         public static float SpaceAreaHeight_3pt { get; set; } = 3f;
 
         /// <summary>
+        /// 預設換頁底部預留空間 (pt)。用於控制表格換頁時，最底端距離 Footer 頂線的距離。
+        /// 預設值為 30f。
+        /// </summary>
+        public static float DefaultPageBottomMargin { get; set; } = 30f;
+
+        /// <summary>
         /// 取得頁面的繪圖區域（已套用邊距）。
         /// </summary>
         /// <param name="pageRectangle">原始頁面矩形</param>

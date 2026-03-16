@@ -453,6 +453,7 @@ namespace PlexReportII.Reports
             {
                 GcPen pen = new GcPen(Color.Gray, 0.5f);
                 Pdf.DrawLine(pen, contentRect.Left, contentRect.Bottom, contentRect.Right, contentRect.Bottom);
+                Logger.Info("Footer中頂線位置: 781.89 pt; 頁面總高度 (A4)：841.89 pt; 垂直邊距 (MarginVertical)：預設為 60 pt");
             }
 
             // 繪製 Footer 文字（左側）
@@ -1263,7 +1264,7 @@ namespace PlexReportII.Reports
 
         /// <summary>
         /// 繪製 PC/NC Fail Detail Table (含自動分組合併、奇偶列變色、per-cell 顏色覆寫、換頁處理)。
-        /// 依據 DetailTableStyle 控制所有表格樣式。
+        /// 依據 DetailTableStyle 控制所有表格樣式，包含透過 style.PageBottomMargin 控制換頁時距離 Footer 的預留緩衝區 (預設繼承自 PdfGlobalConfig.DefaultPageBottomMargin)。
         /// </summary>
         /// <param name="_c1pdf">C1PdfDocument 實例</param>
         /// <param name="items">扁平資料列表 (已排序)</param>
@@ -1783,16 +1784,19 @@ namespace PlexReportII.Reports
         /// 繪製 Summary Result Table( 6欄 )。
         /// 支援換頁邏輯、奇偶列底色交替、多行文字自動換行。
         /// 當 drawFlagNote 為 true 時，換頁前繪製 Flag Note，且 Footer 保留高度含 Flag Note Height + 2pt。
+        /// 換頁時會根據 pageBottomMargin 預留距離 Footer 頂線的緩衝空間。
         /// </summary>
         /// <param name="data">Summary 資料 (每列 6 欄: Well ID, Specimen ID, Status, Nucleotide Change, Mutation, Flag)</param>
         /// <param name="flagNoteData">Flag Note 項目清單 (可為 null)</param>
         /// <param name="supplementalText">補充文字 (可為 null)</param>
         /// <param name="drawFlagNote">是否在換頁時繪製 Flag Note 並預留高度</param>
+        /// <param name="pageBottomMargin">換頁距離底部的緩衝區大小 (預設 0f)</param>
         public virtual void DrawSummaryResult6ColumnTable(
             List<List<string>> data,
             List<string>? flagNoteData,
             string? supplementalText,
-            bool drawFlagNote)
+            bool drawFlagNote,
+            float pageBottomMargin = 0f)
         {
             if (data == null || data.Count == 0)
             {
@@ -1855,7 +1859,7 @@ namespace PlexReportII.Reports
             }
 
             // === Drawable bottom boundary ===
-            float drawableBottom = PageRect.Bottom - flagNoteReservedHeight;
+            float drawableBottom = PageRect.Bottom - flagNoteReservedHeight - pageBottomMargin;
 
             // === Alternating row colors ===
             Color evenRowColor = Color.FromArgb(242, 242, 242);
@@ -2271,9 +2275,11 @@ namespace PlexReportII.Reports
         /// 繪製 Individual Result Table (對應舊版 show_sample_Table_IndvPDF_V5)。
         /// 5 欄自訂寬度表格: Col 0-2 Arial 12pt 左對齊, Col 3-4 Arial 10pt 右對齊。
         /// 偶數列淡藍底色。"Detected" 紅字。換頁時重繪 Header。
+        /// 換頁時會根據 pageBottomMargin 預留距離 Footer 頂線的緩衝空間。
         /// </summary>
         /// <param name="data">表格資料 (第 0 筆為 Header，後續為 Body，每筆 5 欄)</param>
-        public virtual void DrawIndividualResultTable5Col(List<List<string>> data)
+        /// <param name="pageBottomMargin">換頁距離底部的緩衝區大小 (預設繼承自 PdfGlobalConfig.DefaultPageBottomMargin)</param>
+        public virtual void DrawIndividualResultTable5Col(List<List<string>> data, float? pageBottomMargin = null)
         {
             if (data == null || data.Count < 2)
             {
@@ -2282,6 +2288,9 @@ namespace PlexReportII.Reports
             }
 
             Logger.Info($"DrawIndividualResultTable5Col: {data.Count - 1} body rows.");
+
+            float bottomMargin = pageBottomMargin ?? Infrastructure.PdfGlobalConfig.DefaultPageBottomMargin;
+            float drawableBottom = PageRect.Bottom - bottomMargin;
 
             int numOfCol = 5;
             float cellPadding = 8f;
@@ -2428,7 +2437,9 @@ namespace PlexReportII.Reports
                 }
             }
 
-            if (CurrentRect.Y > PageRect.Top + 10f && CurrentRect.Y + headerHeightEstimate + firstRowHeightEstimate > PageRect.Bottom)
+            bool initialPageBreak = CurrentRect.Y > PageRect.Top + 10f && CurrentRect.Y + headerHeightEstimate + firstRowHeightEstimate > drawableBottom;
+            Logger.Info($"[INDV Table] Initial Page Break Check: CurrentY={CurrentRect.Y:F2}, PageTop={PageRect.Top:F2}, HeaderEst={headerHeightEstimate:F2}, FirstRowEst={firstRowHeightEstimate:F2}, DrawableBottom={drawableBottom:F2}. Triggered: {initialPageBreak}");
+            if (initialPageBreak)
             {
                 AddNewPage();
             }
@@ -2454,8 +2465,12 @@ namespace PlexReportII.Reports
                 }
 
                 // === Page break check (BEFORE drawing — consistent with other tables) ===
-                if (CurrentRect.Y + rowHeight > PageRect.Bottom - 50)
+                bool rowPageBreak = CurrentRect.Y + rowHeight > drawableBottom;
+                if (rowPageBreak)
                 {
+                    float distanceToBottom = PageRect.Bottom - CurrentRect.Y;
+                    Logger.Info($"[INDV Table] Row Page Break (Row {r}): CurrentY={CurrentRect.Y:F2}, RowHeight={rowHeight:F2}, DrawableBottom={drawableBottom:F2}, DistanceToBottom={distanceToBottom:F2}, Buffer={bottomMargin:F2}. (因為 Y+Height > DrawableBottom 觸發換頁)");
+                    
                     // Draw bottom line + vertical borders for current page segment
                     Pdf.DrawLine(new GcPen(lineColor, lineWidth), pageLeft, CurrentRect.Y, pageRight, CurrentRect.Y);
                     float segBottom = tableTop + tableHeight;
