@@ -2137,9 +2137,11 @@ namespace PlexReportII.Reports
         /// 繪製 Sample Control Table (對應舊版 show_SampleControl_Table_V5)。
         /// 5 欄雙區域表格: 左半 3 欄 (Controls, Result, Cutoff) + 右半 2 欄 (Controls, Result)。
         /// 左/中/右三條垂直邊框線。Header 粗體。Col 1-2 右對齊。"Fail" 顯示紅色。
+        /// 繪製前會計算整個表格高度，若剩餘空間不足會在換頁後繪製整個表格。支援自訂頁尾保留空間。
         /// </summary>
         /// <param name="data">表格資料 (第 0 筆為 Header，後續為 Body，每筆 5 欄)</param>
-        public virtual void DrawSampleControlTable(List<List<string>> data)
+        /// <param name="pageBottomMargin">換頁距離底部的緩衝區大小 (預設繼承自 PdfGlobalConfig.DefaultPageBottomMargin)</param>
+        public virtual void DrawSampleControlTable(List<List<string>> data, float? pageBottomMargin = null)
         {
             if (data == null || data.Count < 2)
             {
@@ -2192,10 +2194,12 @@ namespace PlexReportII.Reports
                 pageW / 2 + pageW / 4           // col 4: start at 3W/4
             };
 
-            float tableTop = CurrentRect.Y;
-            float tableHeight = 0;
+            // Calculate drawable bottom boundary
+            float bottomMargin = pageBottomMargin ?? Infrastructure.PdfGlobalConfig.DefaultPageBottomMargin;
+            float drawableBottom = PageRect.Bottom - bottomMargin;
 
-            // === Draw Header Row ===
+            // === Pre-calculate Total Table Height ===
+            float totalRequiredHeight = 0;
             List<string> headerRow = data[0];
             float headerRowHeight = 0;
 
@@ -2205,6 +2209,34 @@ namespace PlexReportII.Reports
                 float h = sz.Height + 6;
                 if (h > headerRowHeight) headerRowHeight = h;
             }
+            totalRequiredHeight += headerRowHeight;
+
+            // Calculate body heights
+            for (int r = 1; r < data.Count; r++)
+            {
+                List<string> row = data[r];
+                float rowHeight = 0;
+                for (int c = 0; c < numOfCol && c < row.Count; c++)
+                {
+                    SizeF sz = Pdf.MeasureString(row[c], bodyFont, colWidths[c] - cellPadding * 2);
+                    float h = sz.Height + 6;
+                    if (h > rowHeight) rowHeight = h;
+                }
+                totalRequiredHeight += rowHeight;
+            }
+
+            // === Page Break Check for Entire Table ===
+            bool needPageBreak = CurrentRect.Y > PageRect.Top + 10f && CurrentRect.Y + totalRequiredHeight > drawableBottom;
+            Logger.Info($"[IndividualControlTable] Total Height={totalRequiredHeight:F2}, CurrentY={CurrentRect.Y:F2}, DrawableBottom={drawableBottom:F2}. Need Page Break: {needPageBreak}");
+            if (needPageBreak)
+            {
+                AddNewPage();
+            }
+
+            float tableTop = CurrentRect.Y;
+            float tableHeight = 0;
+
+            // === Draw Header Row ===
 
             // Draw header top line
             Pdf.DrawLine(new GcPen(lineColor, lineWidth), pageLeft, CurrentRect.Y, pageRight, CurrentRect.Y);
