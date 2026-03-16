@@ -707,6 +707,9 @@ namespace PlexReportII.Reports
                 currentY += rowHeight;
             }
 
+            // 繪製表格底線
+            Pdf.DrawLine(new GcPen(Color.Gray, 0.2f), PageRect.Left, currentY, PageRect.Left + CurrentRect.Width, currentY);
+
             // 更新 CurrentRect
             CurrentRect = new RectangleF(
                 CurrentRect.X,
@@ -1068,6 +1071,9 @@ namespace PlexReportII.Reports
 
                 currentY += rowHeight;
             }
+
+            // 繪製表格底線
+            Pdf.DrawLine(new GcPen(Color.Gray, 0.2f), startX, currentY, startX + tableWidth, currentY);
 
             // 更新 CurrentRect
             CurrentRect = new RectangleF(
@@ -2447,6 +2453,25 @@ namespace PlexReportII.Reports
                     if (h > rowHeight) rowHeight = h;
                 }
 
+                // === Page break check (BEFORE drawing — consistent with other tables) ===
+                if (CurrentRect.Y + rowHeight > PageRect.Bottom - 50)
+                {
+                    // Draw bottom line + vertical borders for current page segment
+                    Pdf.DrawLine(new GcPen(lineColor, lineWidth), pageLeft, CurrentRect.Y, pageRight, CurrentRect.Y);
+                    float segBottom = tableTop + tableHeight;
+                    Pdf.DrawLine(new GcPen(lineColor, lineWidth), pageLeft, tableTop, pageLeft, segBottom);
+                    Pdf.DrawLine(new GcPen(lineColor, lineWidth), pageRight, tableTop, pageRight, segBottom);
+
+                    // New page
+                    AddNewPage();
+                    CurrentRect = new RectangleF(PageRect.X, PageRect.Top + 20, PageRect.Width, PageRect.Height - 20);
+                    tableTop = CurrentRect.Y;
+                    tableHeight = 0;
+
+                    // Re-draw header on new page
+                    DrawHeader();
+                }
+
                 // Even-row alternate background
                 if (r % 2 == 0)
                 {
@@ -2478,25 +2503,6 @@ namespace PlexReportII.Reports
 
                 CurrentRect = new RectangleF(CurrentRect.X, CurrentRect.Y + rowHeight, CurrentRect.Width, CurrentRect.Height - rowHeight);
                 tableHeight += rowHeight;
-
-                // Page break check (bottom margin < 50pt)
-                if (CurrentRect.Y > PageRect.Bottom - 50)
-                {
-                    // Draw bottom line + vertical borders for current page segment
-                    Pdf.DrawLine(new GcPen(lineColor, lineWidth), pageLeft, CurrentRect.Y, pageRight, CurrentRect.Y);
-                    float segBottom = tableTop + tableHeight;
-                    Pdf.DrawLine(new GcPen(lineColor, lineWidth), pageLeft, tableTop, pageLeft, segBottom);
-                    Pdf.DrawLine(new GcPen(lineColor, lineWidth), pageRight, tableTop, pageRight, segBottom);
-
-                    // New page
-                    AddNewPage();
-                    CurrentRect = new RectangleF(PageRect.X, PageRect.Top + 20, PageRect.Width, PageRect.Height - 20);
-                    tableTop = CurrentRect.Y;
-                    tableHeight = 0;
-
-                    // Re-draw header on new page
-                    DrawHeader();
-                }
             }
 
             // === Draw table bottom line + vertical borders ===
