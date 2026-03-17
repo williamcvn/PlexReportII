@@ -31,6 +31,12 @@ namespace PlexReportII.Infrastructure
         public static float DefaultPageBottomMargin { get; set; } = 30f;
 
         /// <summary>
+        /// 全局預設的換頁後頂部間距 (預設為 20 pt)。
+        /// 控制表格因換頁而重繪於新頁面時，距離頂部 (Header 底線) 的預留空白。
+        /// </summary>
+        public static float DefaultPageTopMargin { get; set; } = 20f;
+
+        /// <summary>
         /// 取得頁面的繪圖區域（已套用邊距）。
         /// </summary>
         /// <param name="pageRectangle">原始頁面矩形</param>

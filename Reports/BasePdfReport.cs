@@ -403,6 +403,7 @@ namespace PlexReportII.Reports
             {
                 GcPen pen = new GcPen(Color.Gray, 0.5f);
                 Pdf.DrawLine(pen, contentRect.Left, contentRect.Top, contentRect.Right, contentRect.Top);
+                Logger.Info("Header中底線位置: 60 pt; 頁面頂點 Y 座標為 0; 預設上下邊界 MarginVertical 為 60");
             }
         }
 
@@ -2231,6 +2232,8 @@ namespace PlexReportII.Reports
             if (needPageBreak)
             {
                 AddNewPage();
+                float topMargin = Infrastructure.PdfGlobalConfig.DefaultPageTopMargin;
+                CurrentRect = new RectangleF(PageRect.X, PageRect.Top + topMargin, PageRect.Width, PageRect.Height - topMargin);
             }
 
             float tableTop = CurrentRect.Y;
@@ -2511,7 +2514,8 @@ namespace PlexReportII.Reports
 
                     // New page
                     AddNewPage();
-                    CurrentRect = new RectangleF(PageRect.X, PageRect.Top + 20, PageRect.Width, PageRect.Height - 20);
+                    float topMargin = Infrastructure.PdfGlobalConfig.DefaultPageTopMargin;
+                    CurrentRect = new RectangleF(PageRect.X, PageRect.Top + topMargin, PageRect.Width, PageRect.Height - topMargin);
                     tableTop = CurrentRect.Y;
                     tableHeight = 0;
 
