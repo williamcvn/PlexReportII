@@ -648,12 +648,12 @@ namespace PlexReportII.Reports
         }
 
         /// <summary>
-        /// 將目前記憶體中的 PDF 輸出至 MemoryStream（快照副本）。
-        /// 此操作不會影響原始文件狀態，可持續編輯後再次預覽。
-        /// 不會繪製 Header/Footer（僅在最終 ExportToFile 時繪製）。
+        /// 將目前記憶體中的 PDF 輸出至 MemoryStream。
+        /// 注意：呼叫後 C1PdfDocument 可能被結束，無法繼續編輯。
+        /// 如需非破壞性預覽，請使用 Form1 的重播機制。
         /// 必須先呼叫 InitializeInMemory 或 GenerateAsync。
         /// </summary>
-        /// <returns>包含 PDF 內容的 MemoryStream（副本）</returns>
+        /// <returns>包含 PDF 內容的 MemoryStream</returns>
         public virtual MemoryStream ExportToStream()
         {
             if (!IsPdfInitialized)
@@ -661,77 +661,17 @@ namespace PlexReportII.Reports
                 throw new InvalidOperationException("PDF 尚未初始化，請先呼叫 InitializeInMemory()");
             }
 
-            // 保存當前狀態
-            int savedPage = Pdf.CurrentPage;
-            int savedPageCount = Pdf.Pages.Count;
+            // 輸出前繪製 Header/Footer
+            RenderHeaders();
+            RenderFooters();
 
-            // 使用暫存檔案方式產生快照，避免 Pdf.Save() 影響原始文件
-            string tempPath = Path.Combine(Path.GetTempPath(), $"PlexReport_Preview_{Guid.NewGuid():N}.pdf");
+            MemoryStream ms = new MemoryStream();
+            Pdf.Save(ms);
+            ms.Position = 0;
 
-            try
-            {
-                // 儲存至暫存檔案
-                Pdf.Save(tempPath);
-
-                // 讀取暫存檔案為 byte array
-                byte[] pdfBytes = File.ReadAllBytes(tempPath);
-
-                // 重新初始化 PDF 文件（還原可編輯狀態）
-                // Pdf.Save() 會結束文件，需重新建立以繼續編輯
-                Pdf = PdfDocumentFactory.CreateDocument(ReportTitle);
-                _isExported = false;
-
-                // 重建頁面（與儲存前相同數量）
-                for (int i = 0; i < savedPageCount; i++)
-                {
-                    if (i == 0)
-                    {
-                        // 第一頁已自動建立
-                        if (Pdf.Pages.Count == 0)
-                        {
-                            Pdf.NewPage();
-                        }
-                    }
-                    else
-                    {
-                        Pdf.NewPage();
-                    }
-                }
-
-                // 還原到之前的頁面（如果有效的話）
-                if (savedPage < Pdf.Pages.Count)
-                {
-                    Pdf.CurrentPage = savedPage;
-                }
-                else
-                {
-                    Pdf.CurrentPage = Pdf.Pages.Count - 1;
-                }
-
-                // 還原 CurrentRect 到最後頁面的頂部（新頁面的起始位置）
-                CurrentRect = new RectangleF(PageRect.X, PageRect.Top, PageRect.Width, PageRect.Height);
-
-                // 產出 MemoryStream 回傳給呼叫端
-                MemoryStream ms = new MemoryStream(pdfBytes);
-
-                Logger.Info($"PDF 快照已產生 (暫存檔副本方式, {savedPageCount} 頁)");
-                return ms;
-            }
-            finally
-            {
-                // 清理暫存檔案
-                try
-                {
-                    if (File.Exists(tempPath))
-                    {
-                        File.Delete(tempPath);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error($"清理暫存檔失敗: {tempPath}", ex);
-                }
-            }
+            _isExported = true;
+            Logger.Info("PDF 已輸出至記憶體串流");
+            return ms;
         }
 
         /// <summary>
