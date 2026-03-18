@@ -806,6 +806,175 @@ namespace PlexReportII.Reports
         }
 
         /// <summary>
+        /// 繪製預覽專用的 Y 軸位置標記（紅色虛線 + 座標標籤）。
+        /// 此方法僅供即時預覽使用，不會更新 CurrentRect，
+        /// 因此不影響後續繪圖操作的佈局。
+        /// </summary>
+        public void DrawPreviewYMarker()
+        {
+            if (!IsPdfInitialized)
+            {
+                return;
+            }
+
+            float y = CurrentY;
+            float pageLeft = PageRect.Left;
+            float pageRight = PageRect.Right;
+
+            // 繪製紅色虛線（跨越整個頁面寬度，手動繪製虛線段）
+            var pen = new GcPen(Color.Red, 0.8f);
+            float dashLen = 6f;
+            float gapLen = 3f;
+            float cx = pageLeft;
+            while (cx < pageRight)
+            {
+                float endX = Math.Min(cx + dashLen, pageRight);
+                Pdf.DrawLine(pen, new PointF(cx, y), new PointF(endX, y));
+                cx = endX + gapLen;
+            }
+
+            // 繪製小三角標記 (左側)
+            float triSize = 4f;
+            PointF[] triangle = new PointF[]
+            {
+                new PointF(pageLeft, y - triSize),
+                new PointF(pageLeft + triSize * 2, y),
+                new PointF(pageLeft, y + triSize)
+            };
+            Pdf.FillPolygon(Color.Red, triangle);
+
+            // 繪製 Y 座標標籤 (右側)
+            string label = $"▼ Y: {y:F1}  Page: {CurrentPageIndex + 1}";
+            var labelFont = new C1Font("Microsoft JhengHei UI", 7, C1.Util.FontStyle.Bold);
+            var labelSize = Pdf.MeasureString(label, labelFont);
+
+            float labelX = pageRight - labelSize.Width - 5;
+            float labelY = y - labelSize.Height - 2;
+            if (labelY < PageRect.Top)
+            {
+                labelY = y + 2;
+            }
+
+            // 繪製標籤背景
+            var labelRect = new RectangleF(labelX - 2, labelY - 1, labelSize.Width + 4, labelSize.Height + 2);
+            Pdf.FillRectangle(Color.FromArgb(240, 255, 240, 240), labelRect);
+            Pdf.DrawRectangle(new GcPen(Color.Red, 0.3f), labelRect);
+
+            // 繪製標籤文字
+            Pdf.DrawString(label, labelFont, Color.Red,
+                new RectangleF(labelX, labelY, labelSize.Width, labelSize.Height));
+        }
+
+        /// <summary>
+        /// 繪製預覽專用的 Header/Footer 邊界標記（淺青色虛線）。
+        /// 在每一頁繪製 Header 底線與 Footer 頂線。
+        /// 此方法僅供即時預覽使用，不影響文件佈局。
+        /// </summary>
+        public void DrawPreviewBoundaryMarkers()
+        {
+            if (!IsPdfInitialized)
+            {
+                return;
+            }
+
+            int savedPage = Pdf.CurrentPage;
+            int totalPages = Pdf.Pages.Count;
+
+            Color lineColor = Color.LightCyan;
+            var pen = new GcPen(lineColor, 0.6f);
+            float dashLen = 4f;
+            float gapLen = 2f;
+            var labelFont = new C1Font("Microsoft JhengHei UI", 6, C1.Util.FontStyle.Regular);
+
+            for (int i = 0; i < totalPages; i++)
+            {
+                Pdf.CurrentPage = i;
+                RectangleF rcPage = GetPageRect(Pdf);
+                RectangleF headerRect = HeaderFooter.GetHeaderRect(rcPage);
+                RectangleF footerRect = HeaderFooter.GetFooterRect(rcPage);
+
+                float pageLeft = rcPage.Left;
+                float pageRight = rcPage.Right;
+
+                // 繪製邊界標記 (紫色虛線)
+                var marginPen = new GcPen(Color.Purple, 0.6f);
+                RectangleF fullPage = Pdf.PageRectangle;
+                
+                // 上下邊界 (Horizontal)
+                DrawDashedLine(marginPen, fullPage.Left, fullPage.Right, rcPage.Top, dashLen, gapLen);
+                DrawDashedLine(marginPen, fullPage.Left, fullPage.Right, rcPage.Bottom, dashLen, gapLen);
+                
+                // 左右邊界 (Vertical)
+                DrawVerticalDashedLine(marginPen, fullPage.Top, fullPage.Bottom, rcPage.Left, dashLen, gapLen);
+                DrawVerticalDashedLine(marginPen, fullPage.Top, fullPage.Bottom, rcPage.Right, dashLen, gapLen);
+
+                // 標籤 (上方與左方)
+                Pdf.DrawString($"Top Margin", labelFont, Color.Purple, new RectangleF(fullPage.Left + 2, rcPage.Top - 10, 100, 10));
+                Pdf.DrawString($"Left Margin", labelFont, Color.Purple, new RectangleF(rcPage.Left + 2, fullPage.Top + 2, 100, 10));
+
+                // Header 底線 (Header.Bottom)
+                if (HeaderFooter.ShowHeader)
+                {
+                    float hBottom = headerRect.Bottom;
+                    DrawDashedLine(pen, pageLeft, pageRight, hBottom, dashLen, gapLen);
+
+                    // 標籤
+                    string hLabel = $"Header.Bottom ({hBottom:F1})";
+                    var hSize = Pdf.MeasureString(hLabel, labelFont);
+                    Pdf.DrawString(hLabel, labelFont, Color.DarkCyan,
+                        new RectangleF(pageLeft + 2, hBottom + 1, hSize.Width, hSize.Height));
+                }
+
+                // Footer 頂線 (Footer.Top)
+                if (HeaderFooter.ShowFooter)
+                {
+                    float fTop = footerRect.Top;
+                    DrawDashedLine(pen, pageLeft, pageRight, fTop, dashLen, gapLen);
+
+                    // 標籤
+                    string fLabel = $"Footer.Top ({fTop:F1})";
+                    var fSize = Pdf.MeasureString(fLabel, labelFont);
+                    Pdf.DrawString(fLabel, labelFont, Color.DarkCyan,
+                        new RectangleF(pageRight - fSize.Width - 2, fTop - fSize.Height - 1, fSize.Width, fSize.Height));
+                }
+            }
+
+            // 還原頁面指示器
+            if (savedPage < Pdf.Pages.Count)
+            {
+                Pdf.CurrentPage = savedPage;
+            }
+        }
+
+        /// <summary>
+        /// 繪製水平虛線（手動分段繪製）。內部輔助方法。
+        /// </summary>
+        private void DrawDashedLine(GcPen pen, float left, float right, float y, float dashLen, float gapLen)
+        {
+            float cx = left;
+            while (cx < right)
+            {
+                float endX = Math.Min(cx + dashLen, right);
+                Pdf.DrawLine(pen, new PointF(cx, y), new PointF(endX, y));
+                cx = endX + gapLen;
+            }
+        }
+
+        /// <summary>
+        /// 繪製垂直虛線（手動分段繪製）。內部輔助方法。
+        /// </summary>
+        private void DrawVerticalDashedLine(GcPen pen, float top, float bottom, float x, float dashLen, float gapLen)
+        {
+            float cy = top;
+            while (cy < bottom)
+            {
+                float endY = Math.Min(cy + dashLen, bottom);
+                Pdf.DrawLine(pen, new PointF(x, cy), new PointF(x, endY));
+                cy = endY + gapLen;
+            }
+        }
+
+        /// <summary>
         /// 強制換頁。
         /// </summary>
         public virtual void PageBreak()
