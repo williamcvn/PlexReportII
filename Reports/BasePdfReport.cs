@@ -2229,6 +2229,263 @@ namespace PlexReportII.Reports
         }
 
         /// <summary>
+        /// 繪製 Summary Result Table（5 欄）。
+        /// 欄位: Well ID, Specimen ID, Status, Target Pathogen / AMR Genes, Flag。
+        /// 其中 "Target Pathogen / AMR Genes" 欄位為原 6COL 的 Nucleotide Change + Mutation 欄合併，
+        /// 寬度為原兩欄之和（比例 0.64）。
+        /// 支援換頁邏輯、奇偶列底色交替、多行文字自動換行。
+        /// 當 drawFlagNote 為 true 時，換頁前繪製 Flag Note，且 Footer 保留高度含 Flag Note Height + 2pt。
+        /// </summary>
+        /// <param name="data">Summary 資料 (每列 5 欄: Well ID, Specimen ID, Status, Target Pathogen / AMR Genes, Flag)</param>
+        /// <param name="flagNoteData">Flag Note 項目清單 (可為 null)</param>
+        /// <param name="supplementalText">補充文字 (可為 null)</param>
+        /// <param name="drawFlagNote">是否在換頁時繪製 Flag Note 並預留高度</param>
+        /// <param name="pageBottomMargin">換頁距離底部的緩衝區大小 (預設 0f)</param>
+        public virtual void DrawSummaryResult5ColumnTable(
+            List<List<string>> data,
+            List<string>? flagNoteData,
+            string? supplementalText,
+            bool drawFlagNote,
+            float pageBottomMargin = 0f)
+        {
+            if (data == null || data.Count == 0)
+            {
+                Logger.Info("DrawSummaryResult5ColumnTable: no data, skip.");
+                return;
+            }
+
+            Logger.Info($"DrawSummaryResult5ColumnTable: {data.Count} rows, drawFlagNote={drawFlagNote}");
+
+            // === Table style parameters ===
+            string[] headers = { "Well ID", "Specimen ID", "Status", "Target Pathogen / AMR Genes", "Flag" };
+            int numOfCol = 5;
+            float fontSize = 8f;
+            float cellPadding = 3f;
+            float borderWidth = 0.5f;
+            float flagNoteGap = FlagNoteSpacing;
+
+            // Column width ratios (sum = 1.0)
+            // "Target Pathogen / AMR Genes" 欄寬 = 原 Nucleotide Change (0.30) + Mutation (0.34) = 0.64
+            float[] colRatios = { 0.08f, 0.10f, 0.08f, 0.64f, 0.10f };
+
+            // === Calculate column widths and X positions ===
+            float tableWidth = PageRect.Width;
+            float[] colWidths = new float[numOfCol];
+            for (int i = 0; i < numOfCol; i++)
+            {
+                colWidths[i] = tableWidth * colRatios[i];
+            }
+
+            float[] colX = new float[numOfCol];
+            colX[0] = PageRect.Left;
+            for (int i = 1; i < numOfCol; i++)
+            {
+                colX[i] = colX[i - 1] + colWidths[i - 1];
+            }
+
+            // === Fonts and formats ===
+            C1Font fontHeader = new C1Font("Arial", fontSize, C1.Util.FontStyle.Bold);
+            C1Font fontItem = new C1Font("Arial", fontSize, C1.Util.FontStyle.Regular);
+
+            C1StringFormat sfLeft = new C1StringFormat();
+            sfLeft.LineAlignment = C1.Util.VerticalAlignment.Center;
+            sfLeft.Alignment = C1.Util.HorizontalAlignment.Left;
+
+            C1StringFormat sfCenter = new C1StringFormat();
+            sfCenter.LineAlignment = C1.Util.VerticalAlignment.Center;
+            sfCenter.Alignment = C1.Util.HorizontalAlignment.Center;
+
+            // Column alignments (0=Left, 2=Center)
+            // Well ID=Center, Specimen ID=Center, Status=Center, Target=Left, Flag=Center
+            int[] colAligns = { 2, 2, 2, 0, 2 };
+            C1StringFormat GetAlignment(int colIdx)
+            {
+                return colAligns[colIdx] == 2 ? sfCenter : sfLeft;
+            }
+
+            // === Calculate Flag Note reserved height ===
+            float flagNoteReservedHeight = 0f;
+            if (drawFlagNote && flagNoteData != null && flagNoteData.Count > 0)
+            {
+                flagNoteReservedHeight = CalculateTotalFlagNoteHeight(flagNoteData, supplementalText) + flagNoteGap;
+            }
+
+            // === Drawable bottom boundary ===
+            float drawableBottom = PageRect.Bottom - flagNoteReservedHeight - pageBottomMargin;
+
+            // === Alternating row colors ===
+            Color evenRowColor = Color.FromArgb(242, 242, 242);
+            Color oddRowColor = Color.White;
+
+            // === NormalizeText: handle embedded newlines and tab→newline conversion ===
+            string NormalizeText(string text)
+            {
+                if (string.IsNullOrEmpty(text)) return text;
+                // 先將 CSV 中 Tab 分隔符轉換為換行（Target Pathogen / AMR Genes 欄位）
+                string s = text.Replace("\t", "\n");
+                s = s.Replace("\\r\\n", "\n").Replace("\\n", "\n").Replace("\\r", "\n");
+                return s;
+            }
+
+            // === Calculate header height ===
+            float headerHeight = 0;
+            for (int i = 0; i < numOfCol; i++)
+            {
+                float h = Pdf.MeasureString(headers[i], fontHeader, colWidths[i] - cellPadding * 2).Height + 6;
+                if (h > headerHeight) headerHeight = h;
+            }
+
+            RectangleF rc = CurrentRect;
+
+            // === Helper: Draw table header ===
+            void DrawTableHeader()
+            {
+                Pdf.DrawLine(new GcPen(Color.Black, borderWidth), PageRect.Left, rc.Y, PageRect.Left + tableWidth, rc.Y);
+
+                RectangleF rcHeaderBg = new RectangleF(PageRect.Left, rc.Y, tableWidth, headerHeight);
+                Pdf.FillRectangle(Color.FromArgb(200, 200, 200), rcHeaderBg);
+
+                for (int i = 0; i < numOfCol; i++)
+                {
+                    RectangleF rcCell = new RectangleF(colX[i], rc.Y, colWidths[i], headerHeight);
+                    rcCell.Inflate(-cellPadding, 0);
+                    Pdf.DrawString(headers[i], fontHeader, Color.Black, rcCell, GetAlignment(i));
+                }
+
+                rc = new RectangleF(rc.X, rc.Y + headerHeight, rc.Width, rc.Height - headerHeight);
+                Pdf.DrawLine(new GcPen(Color.Black, borderWidth), PageRect.Left, rc.Y, PageRect.Left + tableWidth, rc.Y);
+            }
+
+            // === Helper: Draw Flag Note on current page ===
+            void DrawFlagNoteOnPage()
+            {
+                if (!drawFlagNote || flagNoteData == null || flagNoteData.Count == 0) return;
+
+                float flagStartY = drawableBottom + flagNoteGap;
+                CurrentRect = new RectangleF(
+                    CurrentRect.X,
+                    flagStartY,
+                    CurrentRect.Width,
+                    PageRect.Bottom - flagStartY);
+                DrawFlagNote(flagNoteData, supplementalText ?? "", true);
+            }
+
+            // === Look-ahead for first data row (Prevent Orphan Header) ===
+            float firstRowHeightEstimate = 14f;
+            if (data.Count > 0)
+            {
+                var firstRow = data[0];
+                for (int c = 0; c < numOfCol; c++)
+                {
+                    string cellText = c < firstRow.Count ? firstRow[c] : "";
+                    float cellH = Pdf.MeasureString(NormalizeText(cellText), fontItem, colWidths[c] - cellPadding * 2).Height + 4;
+                    if (cellH > firstRowHeightEstimate) firstRowHeightEstimate = cellH;
+                }
+            }
+
+            if (rc.Y > PageRect.Top + 10f && rc.Y + headerHeight + firstRowHeightEstimate > drawableBottom)
+            {
+                // Force page break before drawing header if space is not enough for first row
+                CurrentRect = rc;
+                DrawFlagNoteOnPage();
+                AddNewPage();
+                rc = CurrentRect;
+                drawableBottom = PageRect.Bottom - flagNoteReservedHeight;
+            }
+
+            // === Draw Header ===
+            DrawTableHeader();
+
+            // === Draw data rows ===
+            int globalRowIndex = 0;
+            for (int rowIdx = 0; rowIdx < data.Count; rowIdx++)
+            {
+                var row = data[rowIdx];
+
+                // Calculate row height (considering multiline text)
+                float rowHeight = 0;
+                string[] normalizedCells = new string[numOfCol];
+                for (int c = 0; c < numOfCol; c++)
+                {
+                    string cellText = c < row.Count ? row[c] : "";
+                    normalizedCells[c] = NormalizeText(cellText);
+
+                    float cellH = Pdf.MeasureString(
+                        normalizedCells[c],
+                        fontItem,
+                        colWidths[c] - cellPadding * 2).Height + 4;
+                    if (cellH > rowHeight) rowHeight = cellH;
+                }
+
+                if (rowHeight < 14f) rowHeight = 14f;
+
+                // === Page break check ===
+                if (rc.Y + rowHeight > drawableBottom)
+                {
+                    // Draw bottom border before page break
+                    Pdf.DrawLine(new GcPen(Color.Black, borderWidth), PageRect.Left, rc.Y, PageRect.Left + tableWidth, rc.Y);
+
+                    // Draw Flag Note before page break
+                    CurrentRect = rc;
+                    DrawFlagNoteOnPage();
+
+                    // New page
+                    AddNewPage();
+                    rc = CurrentRect;
+
+                    // Recalculate drawable bottom for new page
+                    drawableBottom = PageRect.Bottom - flagNoteReservedHeight;
+
+                    // Redraw header on new page
+                    DrawTableHeader();
+                }
+
+                // Draw alternating row background
+                Color rowBgColor = (globalRowIndex % 2 == 0) ? evenRowColor : oddRowColor;
+                RectangleF rcRowBg = new RectangleF(PageRect.Left, rc.Y, tableWidth, rowHeight);
+                Pdf.FillRectangle(rowBgColor, rcRowBg);
+
+                // Draw cell text
+                for (int c = 0; c < numOfCol; c++)
+                {
+                    RectangleF rcCell = new RectangleF(colX[c], rc.Y, colWidths[c], rowHeight);
+                    rcCell.Inflate(-cellPadding, 0);
+                    Pdf.DrawString(normalizedCells[c], fontItem, Color.Black, rcCell, GetAlignment(c));
+                }
+
+                // Draw row separator
+                Pdf.DrawLine(new GcPen(Color.LightGray, 0.2f), PageRect.Left, rc.Y + rowHeight, PageRect.Left + tableWidth, rc.Y + rowHeight);
+
+                rc = new RectangleF(rc.X, rc.Y + rowHeight, rc.Width, rc.Height - rowHeight);
+                globalRowIndex++;
+            }
+
+            // === Draw table bottom border ===
+            Pdf.DrawLine(new GcPen(Color.Black, borderWidth), PageRect.Left, rc.Y, PageRect.Left + tableWidth, rc.Y);
+
+            // === Last page: draw Flag Note below table if space allows ===
+            if (drawFlagNote && flagNoteData != null && flagNoteData.Count > 0)
+            {
+                float spaceRemaining = drawableBottom - rc.Y;
+                if (spaceRemaining > 0)
+                {
+                    CurrentRect = new RectangleF(
+                        rc.X,
+                        rc.Y + flagNoteGap,
+                        rc.Width,
+                        rc.Height - flagNoteGap);
+                    DrawFlagNote(flagNoteData, supplementalText ?? "", true);
+                }
+            }
+            else
+            {
+                CurrentRect = rc;
+            }
+
+            Logger.Info($"DrawSummaryResult5ColumnTable done: {data.Count} rows.");
+        }
+
+        /// <summary>
         /// 繪製 Well Info Table。
         /// 每列上方繪製灰色分隔線。
         /// Is2Column=false: 單行 "Key: Value" 左對齊。
