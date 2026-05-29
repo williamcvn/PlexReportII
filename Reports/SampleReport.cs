@@ -178,5 +178,17 @@ namespace PlexReportII.Reports
 
             CurrentRect = RenderPcncDetailTable6Col(Pdf, items, style, PageRect, CurrentRect);
         }
+
+        /// <summary>
+        /// 繪製 PC/NC Fail Detail Table 5Col (NucleotideChange + Mutation 合併為單一欄位)。
+        /// </summary>
+        /// <param name="items">資料列表 (扁平, 已排序)</param>
+        /// <param name="style">表格樣式定義 (5 欄)</param>
+        public void DrawPcncDetailTable5Col(List<PcncDetailItem> items, DetailTableStyle style)
+        {
+            if (items == null || items.Count == 0) return;
+
+            CurrentRect = RenderPcncDetailTable5Col(Pdf, items, style, PageRect, CurrentRect);
+        }
     }
 }

@@ -57,5 +57,26 @@ namespace PlexReportII.Reports
                 _ => string.Empty
             };
         }
+
+        /// <summary>
+        /// 取得 5 欄模式下指定欄位索引的值。
+        /// 欄位 2 (Target Pathogen / AMR Genes) 為 NucleotideChange + Mutation 合併。
+        /// </summary>
+        /// <param name="columnIndex">欄位索引 (0-4)</param>
+        /// <returns>對應欄位的文字值</returns>
+        public string GetValueByIndex5Col(int columnIndex)
+        {
+            return columnIndex switch
+            {
+                0 => WellId,
+                1 => Control,
+                2 => string.IsNullOrWhiteSpace(Mutation)
+                    ? NucleotideChange
+                    : $"{NucleotideChange} {Mutation}".Trim(),
+                3 => MFI,
+                4 => Cutoff,
+                _ => string.Empty
+            };
+        }
     }
 }

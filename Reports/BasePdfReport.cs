@@ -1824,6 +1824,378 @@ namespace PlexReportII.Reports
         }
 
         /// <summary>
+        /// 繪製 PC/NC Fail Detail Table 5Col (將 NucleotideChange + Mutation 合併為單一欄位)。
+        /// 含自動分組合併、奇偶列變色、per-cell 顏色覆寫、換頁處理。
+        /// 依據 DetailTableStyle 控制所有表格樣式。
+        /// </summary>
+        /// <param name="_c1pdf">C1PdfDocument 實例</param>
+        /// <param name="items">PC/NC Detail 資料列</param>
+        /// <param name="style">表格樣式定義 (5 欄)</param>
+        /// <param name="rcPage">頁面可用區域</param>
+        /// <param name="rc">當前繪製位置</param>
+        /// <returns>更新後的繪製位置</returns>
+        protected RectangleF RenderPcncDetailTable5Col(C1PdfDocument _c1pdf, List<PcncDetailItem> items, DetailTableStyle style, RectangleF rcPage, RectangleF rc)
+        {
+            if (items == null || items.Count == 0)
+            {
+                Logger.Info("RenderPcncDetailTable5Col: no data, skip.");
+                return rc;
+            }
+
+            Logger.Info($"RenderPcncDetailTable5Col: {items.Count} items.");
+
+            // 驗證樣式參數
+            style.Validate();
+
+            int numOfCol = style.Headers.Length;
+            float separatorGap = Math.Max(style.BorderWidth, 1.0f);
+
+            // === 計算欄寬與 X 座標 ===
+            float baseUnit = rcPage.Width / style.WidthBaseDivider;
+            float[] colWidths = new float[numOfCol];
+            for (int i = 0; i < numOfCol; i++)
+            {
+                colWidths[i] = baseUnit * style.ColumnWidthFactors[i] + style.ColumnWidthOffsets[i];
+            }
+
+            float[] colX = new float[numOfCol];
+            colX[0] = rcPage.Left;
+            for (int i = 1; i < numOfCol; i++)
+            {
+                colX[i] = colX[i - 1] + colWidths[i - 1];
+            }
+
+            // === 字型與格式 ===
+            C1Font fontHeader = new C1Font("Arial", style.FontSize, C1.Util.FontStyle.Bold);
+            C1Font fontItem = new C1Font("Arial", style.FontSize, C1.Util.FontStyle.Regular);
+
+            C1StringFormat sfLeft = new C1StringFormat();
+            sfLeft.LineAlignment = C1.Util.VerticalAlignment.Center;
+            sfLeft.Alignment = C1.Util.HorizontalAlignment.Left;
+
+            C1StringFormat sfRight = new C1StringFormat();
+            sfRight.LineAlignment = C1.Util.VerticalAlignment.Center;
+            sfRight.Alignment = C1.Util.HorizontalAlignment.Right;
+
+            C1StringFormat sfCenter = new C1StringFormat();
+            sfCenter.LineAlignment = C1.Util.VerticalAlignment.Center;
+            sfCenter.Alignment = C1.Util.HorizontalAlignment.Center;
+
+            // 對齊方式查找
+            C1StringFormat GetAlignment(int colIdx)
+            {
+                int align = style.ColumnAlignments[colIdx];
+                return align switch
+                {
+                    1 => sfRight,
+                    2 => sfCenter,
+                    _ => sfLeft
+                };
+            }
+
+            // === 可繪製底部邊界 ===
+            float drawableBottom = rcPage.Bottom
+                - style.PageBottomMargin
+                - (style.HasFooterNote ? style.FooterNoteHeight : 0);
+
+            // === 計算 Header 高度 ===
+            float headerHeight = 0;
+            for (int i = 0; i < numOfCol; i++)
+            {
+                float h = _c1pdf.MeasureString(style.Headers[i], fontHeader, colWidths[i] - style.CellPadding * 2).Height + 6;
+                if (h > headerHeight) headerHeight = h;
+            }
+
+            // === 自動分組 (合併邏輯) ===
+            List<List<PcncDetailItem>> groups;
+            if (style.EnableColumnMerge && style.MergeColumnIndices.Length > 0)
+            {
+                groups = BuildMergeGroups(items, style.MergeColumnIndices);
+            }
+            else
+            {
+                // 不合併: 每列各自一組
+                groups = new List<List<PcncDetailItem>>();
+                foreach (var item in items)
+                {
+                    groups.Add(new List<PcncDetailItem> { item });
+                }
+            }
+
+            Logger.Info($"RenderPcncDetailTable5Col: {groups.Count} groups built.");
+
+            // === 找到列分隔線起始欄 ===
+            int firstNonMergeCol = 0;
+            if (style.EnableColumnMerge && style.RowSeparator == RowSeparatorMode.SkipMergedColumns)
+            {
+                for (int i = 0; i < numOfCol; i++)
+                {
+                    if (!Array.Exists(style.MergeColumnIndices, idx => idx == i))
+                    {
+                        firstNonMergeCol = i;
+                        break;
+                    }
+                }
+            }
+
+            // === Helper: Normalize Text (unescape \\r\\n and add ZWS for wrapping) ===
+            string NormalizeText(string text)
+            {
+                if (string.IsNullOrEmpty(text)) return text;
+                string s = text.Replace("\\r\\n", "\n").Replace("\\n", "\n").Replace("\\r", "\n");
+                
+                System.Text.StringBuilder sb = new System.Text.StringBuilder();
+                foreach (char c in s)
+                {
+                    sb.Append(c);
+                    if (c != '\n') sb.Append('\u200B');
+                }
+                return sb.ToString();
+            }
+
+            // === Helper: 繪製 Header ===
+            void DrawHeader()
+            {
+                // 頂線
+                _c1pdf.DrawLine(new GcPen(style.BorderColor, style.BorderWidth), rcPage.Left, rc.Y, rcPage.Right, rc.Y);
+
+                for (int i = 0; i < numOfCol; i++)
+                {
+                    RectangleF rcCell = new RectangleF(colX[i], rc.Y, colWidths[i], headerHeight);
+                    rcCell.Inflate(-style.CellPadding, 0);
+                    _c1pdf.DrawString(style.Headers[i], fontHeader, Color.Black, rcCell, GetAlignment(i));
+                }
+
+                rc.Y += headerHeight;
+                // 底線
+                _c1pdf.DrawLine(new GcPen(style.BorderColor, style.BorderWidth), rcPage.Left, rc.Y, rcPage.Right, rc.Y);
+                rc.Y += separatorGap;
+            }
+
+            // === Helper: 繪製外框 Left + Right ===
+            void DrawOuterBorders(float topY, float bottomY)
+            {
+                _c1pdf.DrawLine(new GcPen(style.BorderColor, style.BorderWidth), rcPage.Left, topY, rcPage.Left, bottomY);
+                _c1pdf.DrawLine(new GcPen(style.BorderColor, style.BorderWidth), rcPage.Right, topY, rcPage.Right, bottomY);
+            }
+
+            // === Helper: 繪製合併欄 (使用 5Col 索引) ===
+            void DrawMergeColumns(PcncDetailItem firstItem, float topY, float height)
+            {
+                if (!style.EnableColumnMerge) return;
+
+                foreach (int mergeCol in style.MergeColumnIndices)
+                {
+                    RectangleF rcMerge = new RectangleF(colX[mergeCol], topY, colWidths[mergeCol], height);
+                    rcMerge.Inflate(-style.CellPadding, 0);
+
+                    Color textColor = Color.Black;
+                    if (firstItem.CellColorOverrides.TryGetValue(mergeCol, out Color overrideColor))
+                    {
+                        textColor = overrideColor;
+                    }
+
+                    _c1pdf.DrawString(NormalizeText(firstItem.GetValueByIndex5Col(mergeCol)), fontItem, textColor, rcMerge, GetAlignment(mergeCol));
+                }
+            }
+
+            // === Helper: 繪製列分隔線 ===
+            void DrawRowSeparator(float y)
+            {
+                switch (style.RowSeparator)
+                {
+                    case RowSeparatorMode.FullWidth:
+                        _c1pdf.DrawLine(new GcPen(style.BorderColor, style.BorderWidth), rcPage.Left, y, rcPage.Right, y);
+                        break;
+                    case RowSeparatorMode.SkipMergedColumns:
+                        _c1pdf.DrawLine(new GcPen(style.BorderColor, style.BorderWidth), colX[firstNonMergeCol], y, rcPage.Right, y);
+                        break;
+                    case RowSeparatorMode.None:
+                        break;
+                }
+            }
+
+            // === 開始繪製 ===
+
+            // 檢查換頁 (Header)
+            float firstRowHeightEstimate = 14f;
+            if (groups.Count > 0 && groups[0].Count > 0)
+            {
+                PcncDetailItem firstItem = groups[0][0];
+                float minH = _c1pdf.MeasureString("Tg", fontItem, 100).Height + 6;
+                firstRowHeightEstimate = minH;
+                for (int colIdx = 0; colIdx < numOfCol; colIdx++)
+                {
+                    if (style.EnableColumnMerge && Array.Exists(style.MergeColumnIndices, idx => idx == colIdx)) continue;
+                    string cellText = NormalizeText(firstItem.GetValueByIndex5Col(colIdx));
+                    if (!string.IsNullOrEmpty(cellText))
+                    {
+                        float h = _c1pdf.MeasureString(cellText, fontItem, colWidths[colIdx] - style.CellPadding * 2, GetAlignment(colIdx)).Height + 6;
+                        if (h > firstRowHeightEstimate) firstRowHeightEstimate = h;
+                    }
+                }
+            }
+
+            if (rc.Y > rcPage.Top + 10f && rc.Y + headerHeight + firstRowHeightEstimate > drawableBottom)
+            {
+                Logger.Info($"[5Col] Initial page break: CurrentY={rc.Y:F2}, HeaderH={headerHeight:F2}, FirstRowEst={firstRowHeightEstimate:F2}, DrawableBottom={drawableBottom:F2}");
+                _c1pdf.NewPage();
+                rc.Y = rcPage.Top + style.PageTopMargin;
+            }
+            else if (rc.Y + headerHeight > drawableBottom)
+            {
+                Logger.Info($"[5Col] Header overflow page break: CurrentY={rc.Y:F2}, HeaderH={headerHeight:F2}, DrawableBottom={drawableBottom:F2}");
+                _c1pdf.NewPage();
+                rc.Y = rcPage.Top + style.PageTopMargin;
+            }
+
+            // 強制第一頁的起始位置至少要符合 PageTopMargin
+            if (rc.Y < rcPage.Top + style.PageTopMargin)
+            {
+                rc.Y = rcPage.Top + style.PageTopMargin;
+            }
+
+            float tableTopY = rc.Y;
+            DrawHeader();
+
+            int dataRowIndex = 0; // 全域列計數器 (跨頁不重置)
+
+            for (int gIdx = 0; gIdx < groups.Count; gIdx++)
+            {
+                List<PcncDetailItem> group = groups[gIdx];
+                float groupTopY = rc.Y;
+                float passHeight = 0;
+
+                for (int rIdx = 0; rIdx < group.Count; rIdx++)
+                {
+                    PcncDetailItem item = group[rIdx];
+
+                    // 計算列高 (僅非合併欄, 使用 5Col 索引)
+                    float minRowHeight = _c1pdf.MeasureString("Tg", fontItem, 100).Height + 6;
+                    float rowHeight = minRowHeight;
+                    
+                    for (int colIdx = 0; colIdx < numOfCol; colIdx++)
+                    {
+                        if (style.EnableColumnMerge && Array.Exists(style.MergeColumnIndices, idx => idx == colIdx))
+                        {
+                            continue;
+                        }
+
+                        string cellText = NormalizeText(item.GetValueByIndex5Col(colIdx));
+                        if (!string.IsNullOrEmpty(cellText))
+                        {
+                            float h = _c1pdf.MeasureString(cellText, fontItem, colWidths[colIdx] - style.CellPadding * 2, GetAlignment(colIdx)).Height + 6;
+                            if (h > rowHeight) rowHeight = h;
+                        }
+                    }
+
+                    // 換頁判斷
+                    if (rc.Y + rowHeight > drawableBottom)
+                    {
+                        // 1. 完成當前頁合併欄
+                        if (passHeight > 0)
+                        {
+                            DrawMergeColumns(group[0], groupTopY, passHeight);
+                        }
+
+                        // 2. 外框封閉
+                        float breakBottomY = rc.Y - separatorGap;
+                        Logger.Info($"[5Col PageBreak] Row {dataRowIndex}: TableBottom={breakBottomY:F2}, DrawableBottom={drawableBottom:F2}");
+
+                        _c1pdf.DrawLine(new GcPen(style.BorderColor, style.BorderWidth), rcPage.Left, breakBottomY, rcPage.Right, breakBottomY);
+                        DrawOuterBorders(tableTopY, breakBottomY);
+
+                        // 3. 換頁
+                        _c1pdf.NewPage();
+                        rc.Y = rcPage.Top + style.PageTopMargin;
+                        tableTopY = rc.Y;
+
+                        // 4. 重繪 Header
+                        if (style.RedrawHeaderOnNewPage)
+                        {
+                            DrawHeader();
+                        }
+
+                        groupTopY = rc.Y;
+                        passHeight = 0;
+                    }
+
+                    // 繪製背景色 (奇偶列)
+                    if (style.AlternatingRowBackground)
+                    {
+                        Color bgColor = (dataRowIndex % 2 == 0) ? style.EvenRowColor : style.OddRowColor;
+
+                        if (style.EnableColumnMerge)
+                        {
+                            float bgStartX = colX[firstNonMergeCol];
+                            float bgWidth = rcPage.Right - bgStartX;
+                            _c1pdf.FillRectangle(bgColor, new RectangleF(bgStartX, rc.Y, bgWidth, rowHeight));
+                        }
+                        else
+                        {
+                            _c1pdf.FillRectangle(bgColor, new RectangleF(rcPage.Left, rc.Y, rcPage.Width, rowHeight));
+                        }
+                    }
+
+                    // 繪製非合併欄文字 (使用 5Col 索引)
+                    for (int colIdx = 0; colIdx < numOfCol; colIdx++)
+                    {
+                        if (style.EnableColumnMerge && Array.Exists(style.MergeColumnIndices, idx => idx == colIdx))
+                        {
+                            continue;
+                        }
+
+                        string cellText = NormalizeText(item.GetValueByIndex5Col(colIdx));
+                        RectangleF rcCell = new RectangleF(colX[colIdx], rc.Y, colWidths[colIdx], rowHeight);
+                        rcCell.Inflate(-style.CellPadding, 0);
+
+                        Color textColor = Color.Black;
+                        if (item.CellColorOverrides.TryGetValue(colIdx, out Color overrideColor))
+                        {
+                            textColor = overrideColor;
+                        }
+
+                        _c1pdf.DrawString(cellText, fontItem, textColor, rcCell, GetAlignment(colIdx));
+                    }
+
+                    passHeight += rowHeight;
+                    rc.Y += rowHeight;
+                    dataRowIndex++;
+
+                    // 列分隔線 (group 內的列之間, 最後一列不畫)
+                    if (rIdx < group.Count - 1)
+                    {
+                        DrawRowSeparator(rc.Y);
+                        rc.Y += separatorGap;
+                        passHeight += separatorGap;
+                    }
+                }
+
+                // Group 結束: 繪製合併欄
+                if (passHeight > 0)
+                {
+                    DrawMergeColumns(group[0], groupTopY, passHeight);
+                }
+
+                // Groups 之間畫全寬分隔線 (最後一組不畫)
+                if (gIdx < groups.Count - 1)
+                {
+                    _c1pdf.DrawLine(new GcPen(style.BorderColor, style.BorderWidth), rcPage.Left, rc.Y, rcPage.Right, rc.Y);
+                    rc.Y += separatorGap;
+                }
+            }
+
+            // === 表格結束: 繪製外框 ===
+            _c1pdf.DrawLine(new GcPen(style.BorderColor, style.BorderWidth), rcPage.Left, rc.Y, rcPage.Right, rc.Y);
+            DrawOuterBorders(tableTopY, rc.Y);
+
+            Logger.Info($"RenderPcncDetailTable5Col done: {items.Count} items, {dataRowIndex} rows rendered.");
+
+            rc.Height = 0;
+            return rc;
+        }
+
+        /// <summary>
         /// 依據合併欄的值將資料自動分組。
         /// 連續列中合併欄值相同的列會被歸入同一組。
         /// </summary>
