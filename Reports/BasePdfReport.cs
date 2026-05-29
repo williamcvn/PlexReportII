@@ -3389,6 +3389,257 @@ namespace PlexReportII.Reports
 
             Logger.Info($"DrawIndividualResultTable5Col done: {data.Count - 1} body rows.");
         }
+
+        /// <summary>
+        /// 繪製 Individual Result Table 4Col (將原本第 1 欄 Nucleotide Change 與第 2 欄 Mutation 合併為單一欄位)。
+        /// 其餘欄位 (Result, MFI, Cutoff) 寬度不變。
+        /// </summary>
+        /// <param name="data">資料列表 (第一列為 Header，其餘為資料列)。每列 4 欄。</param>
+        /// <param name="pageBottomMargin">可選的頁面底部邊界</param>
+        public virtual void DrawIndividualResultTable4Col(List<List<string>> data, float? pageBottomMargin = null)
+        {
+            if (data == null || data.Count < 2)
+            {
+                Logger.Info("DrawIndividualResultTable4Col: no data or header only, skip.");
+                return;
+            }
+
+            Logger.Info($"DrawIndividualResultTable4Col: {data.Count - 1} body rows.");
+
+            float bottomMargin = pageBottomMargin ?? Infrastructure.PdfGlobalConfig.DefaultPageBottomMargin;
+            float drawableBottom = PageRect.Bottom - bottomMargin;
+
+            int numOfCol = 4;
+            float cellPadding = 8f;
+            float lineWidth = 0.2f;
+            Color lineColor = Color.Gray;
+            Color altRowColor = Color.FromArgb(240, 240, 255);
+
+            C1Font headerFont = new C1Font("Arial", 10, C1.Util.FontStyle.Bold);
+            C1Font bodyFontLarge = new C1Font("Arial", 12, C1.Util.FontStyle.Regular);
+            C1Font bodyFontSmall = new C1Font("Arial", 10, C1.Util.FontStyle.Regular);
+
+            // 將 CSV 中的字面 \\r\\n 轉換為實際換行符
+            string NormalizeLineBreaks(string text)
+            {
+                if (string.IsNullOrEmpty(text)) return text;
+                return text.Replace("\\r\\n", "\n").Replace("\\n", "\n").Replace("\\r", "\n");
+            }
+
+            // 強制以字元級別過長斷行
+            string WrapTextCharByChar(string text, C1Font font, float maxWidth)
+            {
+                if (string.IsNullOrEmpty(text)) return text;
+                string[] paragraphs = text.Split(new[] { '\n' }, StringSplitOptions.None);
+                List<string> finalLines = new List<string>();
+
+                foreach (string p in paragraphs)
+                {
+                    if (string.IsNullOrEmpty(p))
+                    {
+                        finalLines.Add("");
+                        continue;
+                    }
+
+                    string currentLine = "";
+                    for (int i = 0; i < p.Length; i++)
+                    {
+                        string testLine = currentLine + p[i];
+                        SizeF sz = Pdf.MeasureString(testLine, font);
+                        if (sz.Width > maxWidth && currentLine.Length > 0)
+                        {
+                            finalLines.Add(currentLine);
+                            currentLine = p[i].ToString();
+                        }
+                        else
+                        {
+                            currentLine = testLine;
+                        }
+                    }
+                    if (currentLine.Length > 0)
+                    {
+                        finalLines.Add(currentLine);
+                    }
+                }
+                return string.Join("\n", finalLines);
+            }
+
+            C1StringFormat sfLeft = new C1StringFormat();
+            sfLeft.LineAlignment = C1.Util.VerticalAlignment.Center;
+            sfLeft.Alignment = C1.Util.HorizontalAlignment.Left;
+
+            C1StringFormat sfRight = new C1StringFormat();
+            sfRight.LineAlignment = C1.Util.VerticalAlignment.Center;
+            sfRight.Alignment = C1.Util.HorizontalAlignment.Right;
+
+            float pageW = PageRect.Width;
+            float pageLeft = PageRect.Left;
+            float pageRight = pageLeft + pageW;
+
+            // Column widths: col0 合併 (原 col0 + col1 寬度)，col1~3 保持原本 col2~4 寬度
+            float[] colWidths = new float[]
+            {
+                (pageW / 3 - 11) + (pageW / 3 + 10),  // col 0: 合併 (Nucleotide Change + Mutation)
+                pageW / 9 + 29,                         // col 1: Result (原 col 2)
+                pageW / 9 - 17,                         // col 2: MFI (原 col 3)
+                pageW / 9 - 11                          // col 3: Cutoff (原 col 4)
+            };
+
+            // Pre-compute column X positions
+            float[] colX = new float[numOfCol];
+            colX[0] = 0;
+            for (int i = 1; i < numOfCol; i++)
+            {
+                colX[i] = colX[i - 1] + colWidths[i - 1];
+            }
+
+            float tableTop = CurrentRect.Y;
+            float tableHeight = 0;
+            List<string> headerRow = data[0];
+
+            // === Helper: Draw Header ===
+            void DrawHeader()
+            {
+                float rowHeight = 0;
+                for (int c = 0; c < numOfCol && c < headerRow.Count; c++)
+                {
+                    float measWidth = colWidths[c] - 4;
+                    string headerText = WrapTextCharByChar(NormalizeLineBreaks(headerRow[c] ?? ""), headerFont, measWidth);
+                    SizeF sz = Pdf.MeasureString(headerText, headerFont, measWidth);
+                    float h = sz.Height + 6;
+                    if (h > rowHeight) rowHeight = h;
+                }
+
+                // Header top line
+                Pdf.DrawLine(new GcPen(lineColor, lineWidth), pageLeft, CurrentRect.Y, pageRight, CurrentRect.Y);
+
+                for (int c = 0; c < numOfCol && c < headerRow.Count; c++)
+                {
+                    float measWidth = colWidths[c] - 4;
+                    RectangleF rcCell = new RectangleF(pageLeft + colX[c], CurrentRect.Y, colWidths[c], rowHeight);
+                    rcCell.Inflate(-cellPadding, 0);
+                    string headerText = WrapTextCharByChar(NormalizeLineBreaks(headerRow[c] ?? ""), headerFont, measWidth);
+                    Pdf.DrawString(headerText, headerFont, Color.Black, rcCell, sfLeft);
+                }
+
+                CurrentRect = new RectangleF(CurrentRect.X, CurrentRect.Y + rowHeight, CurrentRect.Width, CurrentRect.Height - rowHeight);
+                tableHeight += rowHeight;
+
+                // Header bottom line
+                Pdf.DrawLine(new GcPen(lineColor, lineWidth), pageLeft, CurrentRect.Y, pageRight, CurrentRect.Y);
+            }
+
+            // === Look-ahead for first data row (Prevent Orphan Header) ===
+            float headerHeightEstimate = 0f;
+            for (int c = 0; c < numOfCol && c < headerRow.Count; c++)
+            {
+                float measWidth = colWidths[c] - 4;
+                string headerText = WrapTextCharByChar(NormalizeLineBreaks(headerRow[c] ?? ""), headerFont, measWidth);
+                float h = Pdf.MeasureString(headerText, headerFont, measWidth).Height + 6;
+                if (h > headerHeightEstimate) headerHeightEstimate = h;
+            }
+
+            float firstRowHeightEstimate = 14f;
+            if (data.Count > 1)
+            {
+                var firstRow = data[1];
+                for (int c = 0; c < numOfCol && c < firstRow.Count; c++)
+                {
+                    C1Font font = (c < 2) ? bodyFontLarge : bodyFontSmall;
+                    float measWidth = colWidths[c] - 4;
+                    string cellText = WrapTextCharByChar(NormalizeLineBreaks(firstRow[c] ?? ""), font, measWidth);
+                    float h = Pdf.MeasureString(cellText, font, measWidth).Height + 6;
+                    if (h > firstRowHeightEstimate) firstRowHeightEstimate = h;
+                }
+            }
+
+            bool initialPageBreak = CurrentRect.Y > PageRect.Top + 10f && CurrentRect.Y + headerHeightEstimate + firstRowHeightEstimate > drawableBottom;
+            Logger.Info($"[INDV4Col] Initial Page Break Check: CurrentY={CurrentRect.Y:F2}, HeaderEst={headerHeightEstimate:F2}, FirstRowEst={firstRowHeightEstimate:F2}, DrawableBottom={drawableBottom:F2}. Triggered: {initialPageBreak}");
+            if (initialPageBreak)
+            {
+                AddNewPage();
+            }
+
+            // === Draw initial Header ===
+            DrawHeader();
+
+            // === Draw Body Rows ===
+            for (int r = 1; r < data.Count; r++)
+            {
+                List<string> row = data[r];
+                float rowHeight = 0;
+
+                // Pre-compute row height
+                for (int c = 0; c < numOfCol && c < row.Count; c++)
+                {
+                    C1Font font = (c < 2) ? bodyFontLarge : bodyFontSmall;
+                    float measWidth = colWidths[c] - 4;
+                    string cellText = WrapTextCharByChar(NormalizeLineBreaks(row[c] ?? ""), font, measWidth);
+                    SizeF sz = Pdf.MeasureString(cellText, font, measWidth);
+                    float h = sz.Height + 6;
+                    if (h > rowHeight) rowHeight = h;
+                }
+
+                // === Page break check ===
+                bool rowPageBreak = CurrentRect.Y + rowHeight > drawableBottom;
+                if (rowPageBreak)
+                {
+                    Logger.Info($"[INDV4Col] Row Page Break (Row {r}): CurrentY={CurrentRect.Y:F2}, RowHeight={rowHeight:F2}, DrawableBottom={drawableBottom:F2}");
+
+                    Pdf.DrawLine(new GcPen(lineColor, lineWidth), pageLeft, CurrentRect.Y, pageRight, CurrentRect.Y);
+                    float segBottom = tableTop + tableHeight;
+                    Pdf.DrawLine(new GcPen(lineColor, lineWidth), pageLeft, tableTop, pageLeft, segBottom);
+                    Pdf.DrawLine(new GcPen(lineColor, lineWidth), pageRight, tableTop, pageRight, segBottom);
+
+                    AddNewPage();
+                    float topMargin = Infrastructure.PdfGlobalConfig.DefaultPageTopMargin;
+                    CurrentRect = new RectangleF(PageRect.X, PageRect.Top + topMargin, PageRect.Width, PageRect.Height - topMargin);
+                    tableTop = CurrentRect.Y;
+                    tableHeight = 0;
+
+                    DrawHeader();
+                }
+
+                // Even-row alternate background
+                if (r % 2 == 0)
+                {
+                    Pdf.FillRectangle(altRowColor, pageLeft, CurrentRect.Y, pageW, rowHeight);
+                }
+
+                // Draw cells
+                for (int c = 0; c < numOfCol && c < row.Count; c++)
+                {
+                    C1Font font = (c < 2) ? bodyFontLarge : bodyFontSmall;
+                    C1StringFormat sf = (c < 2) ? sfLeft : sfRight;
+
+                    RectangleF rcCell = new RectangleF(pageLeft + colX[c], CurrentRect.Y, colWidths[c], rowHeight);
+                    rcCell.Inflate(-2, 0);
+
+                    float measWidth = colWidths[c] - 4;
+                    string cellText = WrapTextCharByChar(NormalizeLineBreaks(row[c] ?? ""), font, measWidth);
+
+                    // Red text for "Detected"
+                    Color textColor = Color.Black;
+                    if (string.Equals(row[c]?.Trim(), "Detected", StringComparison.OrdinalIgnoreCase))
+                    {
+                        textColor = Color.Red;
+                    }
+
+                    Pdf.DrawString(cellText, font, textColor, rcCell, sf);
+                }
+
+                CurrentRect = new RectangleF(CurrentRect.X, CurrentRect.Y + rowHeight, CurrentRect.Width, CurrentRect.Height - rowHeight);
+                tableHeight += rowHeight;
+            }
+
+            // === Draw table bottom line + vertical borders ===
+            float finalBottom = tableTop + tableHeight;
+            Pdf.DrawLine(new GcPen(lineColor, lineWidth), pageLeft, finalBottom, pageRight, finalBottom);
+            Pdf.DrawLine(new GcPen(lineColor, lineWidth), pageLeft, tableTop, pageLeft, finalBottom);
+            Pdf.DrawLine(new GcPen(lineColor, lineWidth), pageRight, tableTop, pageRight, finalBottom);
+
+            Logger.Info($"DrawIndividualResultTable4Col done: {data.Count - 1} body rows.");
+        }
     }
 }
 
