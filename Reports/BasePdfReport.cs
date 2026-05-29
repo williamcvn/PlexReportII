@@ -1460,7 +1460,7 @@ namespace PlexReportII.Reports
         }
 
         /// <summary>
-        /// 繪製 PC/NC Fail Detail Table (含自動分組合併、奇偶列變色、per-cell 顏色覆寫、換頁處理)。
+        /// 繪製 PC/NC Fail Detail Table 6Col (含自動分組合併、奇偶列變色、per-cell 顏色覆寫、換頁處理)。
         /// 依據 DetailTableStyle 控制所有表格樣式，包含透過 style.PageBottomMargin 控制換頁時距離 Footer 的預留緩衝區 (預設繼承自 PdfGlobalConfig.DefaultPageBottomMargin)。
         /// </summary>
         /// <param name="_c1pdf">C1PdfDocument 實例</param>
@@ -1469,7 +1469,7 @@ namespace PlexReportII.Reports
         /// <param name="rcPage">頁面可用區域</param>
         /// <param name="rc">當前繪製位置</param>
         /// <returns>更新後的繪製位置</returns>
-        protected RectangleF RenderPcncDetailTable(C1PdfDocument _c1pdf, List<PcncDetailItem> items, DetailTableStyle style, RectangleF rcPage, RectangleF rc)
+        protected RectangleF RenderPcncDetailTable6Col(C1PdfDocument _c1pdf, List<PcncDetailItem> items, DetailTableStyle style, RectangleF rcPage, RectangleF rc)
         {
             if (items == null || items.Count == 0) return rc;
 

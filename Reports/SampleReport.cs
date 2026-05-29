@@ -176,7 +176,7 @@ namespace PlexReportII.Reports
         {
             if (items == null || items.Count == 0) return;
 
-            CurrentRect = RenderPcncDetailTable(Pdf, items, style, PageRect, CurrentRect);
+            CurrentRect = RenderPcncDetailTable6Col(Pdf, items, style, PageRect, CurrentRect);
         }
     }
 }
