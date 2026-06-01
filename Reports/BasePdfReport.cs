@@ -2393,10 +2393,11 @@ namespace PlexReportII.Reports
             {
                 colWidths[i] = tableWidth * colRatios[i];
             }
-            // col2 (Status) +15px, col3 (Nucleotide Change) -7px, col4 (Mutation) -8px
+            // col1 (Specimen ID) +17px, col2 (Status) +15px, col3 (Nucleotide Change) -15px, col4 (Mutation) -17px
+            colWidths[1] += 17;
             colWidths[2] += 15;
-            colWidths[3] -= 7;
-            colWidths[4] -= 8;
+            colWidths[3] -= 15;
+            colWidths[4] -= 17;
 
             float[] colX = new float[numOfCol];
             colX[0] = PageRect.Left;
@@ -2651,9 +2652,10 @@ namespace PlexReportII.Reports
             {
                 colWidths[i] = tableWidth * colRatios[i];
             }
-            // col2 (Status) +15px, col3 (Target Pathogen) -15px
+            // col1 (Specimen ID) +17px, col2 (Status) +15px, col3 (Target Pathogen) -32px
+            colWidths[1] += 17;
             colWidths[2] += 15;
-            colWidths[3] -= 15;
+            colWidths[3] -= 32;
 
             float[] colX = new float[numOfCol];
             colX[0] = PageRect.Left;
