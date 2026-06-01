@@ -2378,7 +2378,7 @@ namespace PlexReportII.Reports
             // === Table style parameters ===
             string[] headers = { "Well ID", "Specimen ID", "Status", "Nucleotide Change", "Mutation", "Flag" };
             int numOfCol = 6;
-            float fontSize = 8f;
+            float fontSize = 10f;
             float cellPadding = 3f;
             float borderWidth = 0.5f;
             float flagNoteGap = FlagNoteSpacing;
@@ -2393,6 +2393,10 @@ namespace PlexReportII.Reports
             {
                 colWidths[i] = tableWidth * colRatios[i];
             }
+            // col2 (Status) +15px, col3 (Nucleotide Change) -7px, col4 (Mutation) -8px
+            colWidths[2] += 15;
+            colWidths[3] -= 7;
+            colWidths[4] -= 8;
 
             float[] colX = new float[numOfCol];
             colX[0] = PageRect.Left;
@@ -2413,8 +2417,8 @@ namespace PlexReportII.Reports
             sfCenter.LineAlignment = C1.Util.VerticalAlignment.Center;
             sfCenter.Alignment = C1.Util.HorizontalAlignment.Center;
 
-            // Column alignments (0=Left, 2=Center)
-            int[] colAligns = { 2, 2, 2, 0, 0, 2 };
+            // Column alignments: 全部對齊左邊
+            int[] colAligns = { 0, 0, 0, 0, 0, 0 };
             C1StringFormat GetAlignment(int colIdx)
             {
                 return colAligns[colIdx] == 2 ? sfCenter : sfLeft;
@@ -2631,7 +2635,7 @@ namespace PlexReportII.Reports
             // === Table style parameters ===
             string[] headers = { "Well ID", "Specimen ID", "Status", "Target Pathogen / AMR Genes", "Flag" };
             int numOfCol = 5;
-            float fontSize = 8f;
+            float fontSize = 10f;
             float cellPadding = 3f;
             float borderWidth = 0.5f;
             float flagNoteGap = FlagNoteSpacing;
@@ -2647,6 +2651,9 @@ namespace PlexReportII.Reports
             {
                 colWidths[i] = tableWidth * colRatios[i];
             }
+            // col2 (Status) +15px, col3 (Target Pathogen) -15px
+            colWidths[2] += 15;
+            colWidths[3] -= 15;
 
             float[] colX = new float[numOfCol];
             colX[0] = PageRect.Left;
@@ -2668,8 +2675,8 @@ namespace PlexReportII.Reports
             sfCenter.Alignment = C1.Util.HorizontalAlignment.Center;
 
             // Column alignments (0=Left, 2=Center)
-            // Well ID=Center, Specimen ID=Center, Status=Center, Target=Left, Flag=Center
-            int[] colAligns = { 2, 2, 2, 0, 2 };
+            // 全部對齊左邊
+            int[] colAligns = { 0, 0, 0, 0, 0 };
             C1StringFormat GetAlignment(int colIdx)
             {
                 return colAligns[colIdx] == 2 ? sfCenter : sfLeft;
